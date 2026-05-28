@@ -103,7 +103,7 @@
       </div>
     </div>
     <div class="row">
-      <div><label>单台单价（可选）</label><div class="hint">估算守住 SLO 的成本</div></div>
+      <div><label>单卡月租（可选）</label><div class="hint">一张 GPU 卡每月成本，用于估算每张图成本</div></div>
       <div style="display:flex;align-items:center;gap:6px"><input type="number" id="price" value="" placeholder="0"><span class="mono" style="color:var(--muted)">/月</span></div>
     </div>
 
@@ -231,11 +231,22 @@ function render(){
   }
   const ar=ans!==null?rows.find(r=>r.c===ans):null;
   const price=parseFloat($('price').value)||0;
-  const costStr=(ans!==null&&price>0)?` · 成本 ≈ ${(ans*price).toLocaleString()}/月`:'';
+  // monthly volume estimate (daily total × 30), independent of peak share
+  const dailyTotal = MODE==='derive' ? (parseFloat($('daily').value)||0) : lambda*86400;
+  const monthlyVol = dailyTotal*30;
+  const monthlyCost = (ans!==null&&price>0) ? ans*price : 0;
+  const perImg = (monthlyCost>0&&monthlyVol>0) ? monthlyCost/monthlyVol : 0;
+  const costStr=(ans!==null&&price>0)?` · 月成本 ≈ ${monthlyCost.toLocaleString()}`:'';
 
   html+=`<div class="answer"><div class="hint" style="color:var(--muted)">守住 ${pname} ≤ ${tol}s，最少需要</div>
-    <div class="big">${ans!==null?ans:(cStart+'+')} <span style="font-size:20px;color:var(--muted)">台</span></div>
-    ${ar?`<div class="sub">利用率 ${(ar.m.rho*100).toFixed(0)}% · 实际 ${pname} ≈ ${fs(ar.chosen)} · 平均 ≈ ${fs(ar.m.mean)}${costStr}</div>`:''}</div>`;
+    <div class="big">${ans!==null?ans:(cStart+'+')} <span style="font-size:20px;color:var(--muted)">张 GPU 卡</span></div>
+    ${ar?`<div class="sub">利用率 ${(ar.m.rho*100).toFixed(0)}% · 实际 ${pname} ≈ ${fs(ar.chosen)} · 平均 ≈ ${fs(ar.m.mean)}${costStr}</div>`:''}
+    ${perImg>0?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="hint" style="color:var(--muted)">每张图成本</div>
+      <div class="mono" style="font-size:30px;font-weight:800;color:var(--teal);margin-top:2px">${perImg<1?perImg.toFixed(3):perImg.toFixed(2)} <span style="font-size:15px;color:var(--muted)">/张</span></div>
+      <div class="hint" style="margin-top:4px">= 月成本 ${monthlyCost.toLocaleString()} ÷ 月产量 ${Math.round(monthlyVol).toLocaleString()} 张（日产 ${Math.round(dailyTotal).toLocaleString()}×30）${MODE==='direct'?' ⚠ 直接填速率模式下，日产量按峰值×全天粗估，偏高；建议用"从日产量推算"模式得到准确每张成本':''}</div>
+    </div>`:''}
+  </div>`;
 
   html+=`<div class="stats">
     <div class="stat"><div class="l">峰值速率</div><div class="v" style="color:var(--indigo)">${fr(lambda)}</div><div class="s">用于计算</div></div>

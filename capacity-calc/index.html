@@ -13,7 +13,7 @@
   .wrap{max-width:600px; margin:0 auto}
   .eyebrow{letter-spacing:2px; color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:6px}
   h1{font-size:24px; font-weight:800; margin:0 0 4px; letter-spacing:-.4px}
-  .tag{font-size:12.5px; color:var(--teal); margin-bottom:14px}
+  .tag{font-size:12.5px; color:var(--teal); margin-bottom:14px; line-height:1.5}
   .mono{font-family:'JetBrains Mono',monospace}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; margin-top:14px}
   .row{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px}
@@ -22,8 +22,12 @@
   .hint{font-size:11.5px; color:var(--muted); margin-top:3px; line-height:1.5}
   input[type=number]{width:96px; background:var(--bg); border:1px solid var(--line); color:var(--text);
     border-radius:9px; padding:9px 11px; font-size:15px; font-family:'JetBrains Mono',monospace; text-align:right;}
-  input:focus{outline:none; border-color:var(--indigo)}
+  input:focus,textarea:focus{outline:none; border-color:var(--indigo)}
+  textarea{width:100%; min-height:92px; resize:vertical; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:9px; padding:10px 12px; font-size:13px; line-height:1.6; font-family:'JetBrains Mono',monospace}
   select{background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 8px; font-size:13px}
+  .action{background:var(--indigo); border:0; color:#08101e; border-radius:9px; padding:10px 16px; font-weight:800; cursor:pointer}
+  .action:disabled{opacity:.55; cursor:wait}
   .seg{display:flex; gap:6px}
   .seg button{flex:1; background:var(--bg); border:1px solid var(--line); color:var(--muted); border-radius:9px;
     padding:9px 4px; font-size:13.5px; font-weight:700; cursor:pointer; font-family:'JetBrains Mono',monospace; transition:.15s}
@@ -43,6 +47,11 @@
   .answer{background:linear-gradient(135deg,var(--panel2),var(--panel)); border:1px solid #6c8cff55; border-radius:16px; padding:24px; margin-top:14px; text-align:center}
   .answer .big{font-size:48px; font-weight:800; color:var(--indigo); line-height:1; font-family:'JetBrains Mono',monospace}
   .answer .sub{font-size:12.5px; color:var(--muted); margin-top:10px; font-family:'JetBrains Mono',monospace}
+  .capacity-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; text-align:left}
+  .capacity-result{background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:16px}
+  .capacity-result.production{border-color:#34d6c866; background:#34d6c80b}
+  .capacity-result .big{font-size:36px; margin-top:8px}
+  .capacity-result.production .big{color:var(--teal)}
   .stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:12px}
   .stat{background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:13px 9px; text-align:center}
   .stat .l{font-size:11px; color:var(--muted); margin-bottom:5px}
@@ -61,30 +70,33 @@
   .warn b{color:var(--red)}
   .note{background:#34d6c812; border:1px solid #34d6c844; border-radius:12px; padding:12px 14px; margin-top:12px; font-size:12px; color:var(--teal); line-height:1.6}
   .foot{font-size:11.5px; color:var(--muted); text-align:center; margin-top:18px; line-height:1.7}
+  @media(max-width:480px){.capacity-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
 </style>
 
 <div class="wrap">
-  <div class="eyebrow">容量规划 · 生图服务 · G/G/c</div>
-  <h1>需要几台机器？</h1>
-  <div class="tag">已按"有界·稳定服务时间"建模（不是指数假设）</div>
+  <div class="eyebrow">通用容量规划 · 排队服务 · 快速估算</div>
+  <h1>需要多少并行容量？</h1>
+  <div class="tag">适用于公共队列 + 同质执行槽位 + 每槽位同时处理一个任务</div>
 
-  <details class="formula" open>
-    <summary>计算公式与说明</summary>
-    <div class="frow"><code>E[S] = (下限 + 上限) / 2，  μ = 1 / E[S]</code><span>平均生图耗时与单台服务率</span></div>
-    <div class="frow"><code>C_s = (上限−下限) / (√3 · (上限+下限))</code><span>服务时间波动（按区间均匀分布估），越小越稳</span></div>
-    <div class="frow"><code>λ = 日总量 × 高峰占比 ÷ 高峰秒数</code><span>峰值到达率（或直接给定）</span></div>
-    <div class="frow"><code>a = λ × E[S]</code><span>负载量＝平均同时在生成的图数；机器数必须 &gt; a</span></div>
-    <div class="frow"><code>C = ErlangC(c, a)，  ρ = a / c</code><span>需要排队的概率、每台利用率</span></div>
-    <div class="frow"><code>W_q = C/(cμ−λ) × (1 + C_s²)/2</code><span>Allen-Cunneen 排队近似：服务越稳，排队越短（C_s→0 时减半）</span></div>
-    <div class="frow"><code>服务地板 = 下限 + p·(上限−下限)</code><span>无排队时的 Pp，封顶在上限附近——不再是指数的 3× 平均</span></div>
-    <div class="frow"><code>Pp 总延迟 = (排队 + 生图) 分布的 p 分位（数值解）</code><span>有界服务 + 排队的混合分布，数值反求</span></div>
-    <div class="frow"><code>答案 c* = 最小的 c，使 Pp(c) ≤ 容忍上限</code><span>从 ⌈a⌉+1 往上找第一个达标的台数</span></div>
-    <div class="frow"><code>成本 = c* × 单台单价</code></div>
+  <details class="formula">
+    <summary>计算公式与假设</summary>
+    <div class="frow"><code>E[S]、C_s、服务分位 = 所选服务时间模型的矩与分位</code><span>支持 Uniform 区间、离散工作负载组合或粘贴的实测秒数样本</span></div>
+    <div class="frow"><code>λ = 每日任务量 × 高峰占比 ÷ 高峰秒数</code><span>得到高峰时段平均到达率，也可以直接给定</span></div>
+    <div class="frow"><code>λ_design = λ × 峰值系数</code><span>把明确时间窗口内的平均速率转换为设计到达率；默认系数为 1</span></div>
+    <div class="frow"><code>a = λ_design × E[S]</code><span>负载量＝平均同时处理的任务数；执行槽位数必须 &gt; a</span></div>
+    <div class="frow"><code>C = ErlangC(c, a)， ρ = a / c</code><span>估算需要排队的概率与执行槽位利用率</span></div>
+    <div class="frow"><code>W_q ≈ C/(cμ−λ_design) × (C_a² + C_s²)/2</code><span>C_a 近似到达间隔变异；不能表达相关性或非平稳流量</span></div>
+    <div class="frow"><code>服务时间 Pp 下界 = 下限 + p·(上限−下限)</code><span>不排队时的任务处理时长分位</span></div>
+    <div class="frow"><code>估算 Pp 完成时延 = 排队 + 处理时长的近似分位</code><span>用条件指数等待分布匹配近似平均等待时间，再数值反求</span></div>
+    <div class="frow"><code>c* = 最小的 c，使估算 Pp(c) ≤ 服务目标</code><span>从 floor(a)+1 开始自适应扩大范围，再查找最小可行容量</span></div>
+    <div class="frow"><code>生产容量 = max(c*, ceil(a/利用率上限)) + 冗余</code><span>生产建议是显式策略，不是排队公式的理论结果</span></div>
+    <div class="frow"><code>月成本 = c* × 单执行槽位月成本</code></div>
+    <div class="frow"><code>仿真到达间隔 ~ Gamma(mean=1/λ_design, CV=C_a)</code><span>仿真校验使用 Gamma renewal 近似；它不代表相关或非平稳的真实流量轨迹</span></div>
   </details>
 
   <div class="card">
     <div class="row" style="flex-direction:column; align-items:stretch; gap:9px">
-      <label>延迟目标用哪个百分位</label>
+      <label>服务目标使用哪个完成时延分位</label>
       <div class="seg" id="pctSeg">
         <button data-p="0.90">P90</button>
         <button data-p="0.95" class="on">P95</button>
@@ -92,182 +104,472 @@
       </div>
     </div>
     <div class="row">
-      <div><label>容忍上限</label><div class="hint">所选百分位要低于这个值</div></div>
+      <div><label>服务目标上限</label><div class="hint">估算完成时延分位不得超过此值</div></div>
       <div style="display:flex;align-items:center;gap:6px"><input type="number" id="tol" value="150"><span class="mono" style="color:var(--muted)">s</span></div>
     </div>
     <div class="row">
-      <div><label>生图耗时下限 / 上限</label><div class="hint">不同分辨率的最快与最慢</div></div>
+      <div><label>服务时间模型</label><div class="hint">选择你实际掌握的数据形式，不用均值 + CV 猜尾部</div></div>
+      <select id="serviceModelKind"><option value="uniform">Uniform 区间</option><option value="mix">Workload Mix</option><option value="empirical">实测样本</option></select>
+    </div>
+    <div id="uniformServiceMode" class="row">
+      <div><label>任务处理时长下限 / 上限</label><div class="hint">简单模式假设区间内均匀分布</div></div>
       <div style="display:flex;align-items:center;gap:5px">
         <input type="number" id="tmin" value="30" style="width:64px"><span class="mono" style="color:var(--muted)">~</span>
         <input type="number" id="tmax" value="90" style="width:64px"><span class="mono" style="color:var(--muted)">s</span>
       </div>
     </div>
+    <div id="mixServiceMode" class="hidden">
+      <label>工作负载组合</label><div class="hint">每行：名称, 时长秒数, 占比%；占比必须明确合计为 100%</div>
+      <textarea id="workloadMix">标准任务,30,50
+复杂任务,90,50</textarea>
+    </div>
+    <div id="empiricalServiceMode" class="hidden">
+      <label>实测服务时间样本（秒）</label><div class="hint">用空格、逗号或换行分隔；只接受大于 0 的有限数值</div>
+      <textarea id="empiricalSamples">30 40 50 60 70 80 90</textarea>
+    </div>
+    <div id="serviceError" class="warn hidden" style="margin:0 0 16px"></div>
     <div class="row">
-      <div><label>单卡月租（可选）</label><div class="hint">一张 GPU 卡每月成本，用于估算每张图成本</div></div>
+      <div><label>单执行槽位月成本（可选）</label><div class="hint">用于估算满足服务目标所需的容量成本</div></div>
       <div style="display:flex;align-items:center;gap:6px"><input type="number" id="price" value="" placeholder="0"><span class="mono" style="color:var(--muted)">/月</span></div>
     </div>
 
     <div class="divider"></div>
 
     <div class="row" style="flex-direction:column; align-items:stretch; gap:9px">
-      <label>峰值到达率怎么给</label>
+      <label>高峰时段平均到达率怎么给</label>
       <div class="seg" id="modeSeg">
-        <button data-m="derive" class="on">从日产量推算</button>
+        <button data-m="derive" class="on">从每日任务量推算</button>
         <button data-m="direct">直接填速率</button>
       </div>
     </div>
     <div id="deriveMode">
       <div class="row">
-        <div><label>每天生成图片数</label><div class="hint">你的日产量预估</div></div>
-        <div style="display:flex;align-items:center;gap:6px"><input type="number" id="daily" value="5000"><span class="mono" style="color:var(--muted)">/天</span></div>
+        <div><label>每日任务量</label><div class="hint">预计每天完成的任务总数</div></div>
+        <div style="display:flex;align-items:center;gap:6px"><input type="number" id="daily" value="5000"><span class="mono" style="color:var(--muted)">任务/天</span></div>
       </div>
       <div class="row">
-        <div><label>高峰时段时长</label><div class="hint">每天最忙的几个小时</div></div>
+        <div><label>高峰时段时长</label><div class="hint">每天最忙的连续时间窗口</div></div>
         <div style="display:flex;align-items:center;gap:6px"><input type="number" id="peakHrs" value="6"><span class="mono" style="color:var(--muted)">小时</span></div>
       </div>
       <div class="row">
-        <div><label>高峰占全天比例</label><div class="hint">这几小时承载全天多少流量</div></div>
+        <div><label>高峰时段任务占比</label><div class="hint">该窗口承载全天多少任务</div></div>
         <div style="display:flex;align-items:center;gap:6px"><input type="number" id="share" value="60"><span class="mono" style="color:var(--muted)">%</span></div>
       </div>
       <div id="derivedRate" class="derived"></div>
     </div>
     <div id="directMode" class="hidden">
       <div class="row">
-        <div><label>峰值持续到达速率</label><div class="hint">最忙时段每单位时间几张</div></div>
+        <div><label>持续到达率</label><div class="hint">所选高峰窗口内每单位时间的平均任务数</div></div>
         <div style="display:flex;align-items:center;gap:6px">
           <input type="number" id="rate" value="500">
-          <select id="unit"><option value="3600">/小时</option><option value="60">/分钟</option><option value="1">/秒</option></select>
+          <select id="unit"><option value="3600">任务/小时</option><option value="60">任务/分钟</option><option value="1">任务/秒</option></select>
         </div>
       </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <div><label>到达波动</label><div class="hint">C_a 只近似窗口内到达间隔的随机波动</div></div>
+      <select id="arrivalPattern">
+        <option value="0.5">平滑 · C_a 0.5</option>
+        <option value="1" selected>Poisson · C_a 1.0</option>
+        <option value="1.5">突发 · C_a 1.5</option>
+        <option value="2">高突发 · C_a 2.0</option>
+        <option value="custom">自定义</option>
+      </select>
+    </div>
+    <div class="row hidden" id="arrivalCvCustomRow">
+      <div><label>自定义 C_a</label><div class="hint">到达间隔标准差 ÷ 平均值</div></div>
+      <input type="number" id="arrivalCv" value="1" min="0.05" step="0.05">
+    </div>
+    <div class="row">
+      <div><label>设计峰值系数</label><div class="hint">基于明确时间窗口选择，默认不放大</div></div>
+      <select id="peakFactor"><option value="1">1.0×</option><option value="1.1">1.1×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option><option value="2">2.0×</option></select>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <div><label>生产利用率上限</label><div class="hint">为运行波动和维护保留余量</div></div>
+      <select id="maxUtilization"><option value="0.7">70%</option><option value="0.8" selected>80%</option><option value="0.85">85%</option><option value="none">不限制</option></select>
+    </div>
+    <div class="row">
+      <div><label>槽位级冗余</label><div class="hint">默认 N+1；不代表整机或故障域冗余</div></div>
+      <input type="number" id="redundancy" value="1" min="0" step="1">
     </div>
   </div>
 
   <div id="out"></div>
-  <div class="foot">G/G/c（Allen-Cunneen）近似，按有界·稳定服务时间建模，适合生图这类任务。<br>属工程估算，上线前请用真实数据校准。</div>
+  <div class="card" id="simulationPanel">
+    <div class="row" style="align-items:flex-start">
+      <div><label style="font-weight:800">仿真校验</label><div class="hint">显式运行 · Gamma renewal 到达 · 公共 FCFS 队列 · 95% 重复运行区间</div></div>
+      <button class="action" id="runSimulation" type="button">运行校验</button>
+    </div>
+    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      <div><div class="hint">随机种子</div><input type="number" id="simulationSeed" value="20260821" style="width:100%"></div>
+      <div><div class="hint">预热任务</div><input type="number" id="warmupTasks" value="2000" min="0" max="100000" style="width:100%"></div>
+      <div><div class="hint">每次计量</div><input type="number" id="measuredTasks" value="8000" min="100" max="100000" style="width:100%"></div>
+      <div><div class="hint">重复次数</div><input type="number" id="repetitions" value="5" min="2" max="30" style="width:100%"></div>
+    </div>
+    <div id="simulationResult" class="hint" style="margin-top:12px">解析估算不会自动启动仿真。调整好输入后再运行。</div>
+  </div>
+  <div class="foot">快速解析估算始终即时更新；仿真校验只在明确触发时运行。<br>两者都依赖输入假设，上线前请用真实流量和处理时长校准。</div>
 </div>
 
-<script>
-function erlangC(c,a){
-  let B=1; for(let k=1;k<=c;k++) B=(a*B)/(k+a*B);
-  const rho=a/c; if(rho>=1) return 1; return B/(1-rho*(1-B));
-}
-// total latency survival: mixture of (no-wait -> S) and (wait ~ Exp(beta) + S), S~Uniform[L,U]
-function survT(t,C,beta,L,U){
-  const W=U-L;
-  let Ss; // P(S>t)
-  if(W<1e-6) Ss = t<L?1:0; else Ss = t<=L?1 : t>=U?0 : (U-t)/W;
-  if(C<=0 || !isFinite(beta)) return Ss;
-  let ws; // P(Exp+S > t)
-  if(W<1e-6){ ws = t<=L?1 : Math.exp(-beta*(t-L)); }
-  else if(t<=L) ws=1;
-  else if(t>=U) ws=(Math.exp(-beta*(t-U))-Math.exp(-beta*(t-L)))/(beta*W);
-  else ws=((1-Math.exp(-beta*(t-L)))/beta + (U-t))/W;
-  return (1-C)*Ss + C*ws;
-}
-function pctT(p,C,beta,L,U){
-  const targ=1-p; let hi=Math.max(U,1);
-  while(survT(hi,C,beta,L,U)>targ && hi<1e9) hi*=2;
-  let lo=0; for(let i=0;i<60;i++){const m=(lo+hi)/2; if(survT(m,C,beta,L,U)>targ) lo=m; else hi=m;}
-  return (lo+hi)/2;
-}
-function metrics(c,lambda,ES,Cs2,L,U){
-  const mu=1/ES, a=lambda*ES, r1=c*mu-lambda;
-  if(r1<=0) return {stable:false};
-  const C=erlangC(c,a);
-  const Wq=(C/r1)*((1+Cs2)/2);            // Allen-Cunneen mean wait
-  const beta = (C>0&&Wq>0) ? C/Wq : Infinity; // conditional exp rate
-  return {stable:true, rho:a/c, mean:Wq+ES,
-    p90:pctT(0.9,C,beta,L,U), p95:pctT(0.95,C,beta,L,U), p99:pctT(0.99,C,beta,L,U)};
-}
-function fs(s){ if(!isFinite(s)) return '∞'; return s>=100?Math.round(s)+'s':s.toFixed(1)+'s'; }
-function fr(ps){ if(ps>=1) return ps.toFixed(2)+'/秒'; if(ps*60>=1) return (ps*60).toFixed(1)+'/分钟'; return (ps*3600).toFixed(0)+'/小时'; }
+<script type="module">
+import {
+  calculateCapacityCost,
+  calculateDesignArrivalRate,
+  createEmpiricalServiceModel,
+  createUniformServiceModel,
+  createWorkloadMixServiceModel,
+  estimateCapacityMetrics,
+  findMinimumCapacity,
+  getPercentileEstimate,
+  recommendProductionCapacity,
+  runSimulationCheck,
+  serviceTimePercentile,
+} from './model.mjs';
 
-let P=0.95, MODE='derive';
-const $=id=>document.getElementById(id);
-document.querySelectorAll('#pctSeg button').forEach(b=>{b.onclick=()=>{document.querySelectorAll('#pctSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');P=parseFloat(b.dataset.p);render();};});
-document.querySelectorAll('#modeSeg button').forEach(b=>{b.onclick=()=>{document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');MODE=b.dataset.m;$('directMode').classList.toggle('hidden',MODE!=='direct');$('deriveMode').classList.toggle('hidden',MODE!=='derive');render();};});
-['tol','tmin','tmax','price','rate','unit','daily','peakHrs','share'].forEach(id=>$(id).addEventListener('input',render));
-
-function getLambda(){
-  if(MODE==='direct'){ return (parseFloat($('rate').value)||0)/parseFloat($('unit').value); }
-  const daily=parseFloat($('daily').value)||0, hrs=Math.max(0.01,parseFloat($('peakHrs').value)||1), share=(parseFloat($('share').value)||0)/100;
-  return (daily*share)/(hrs*3600);
+function formatSeconds(seconds){
+  if(!Number.isFinite(seconds)) return '∞';
+  return seconds >= 100 ? Math.round(seconds) + 's' : seconds.toFixed(1) + 's';
 }
+function formatRate(perSecond){
+  if(perSecond >= 1) return perSecond.toFixed(2) + ' 任务/秒';
+  if(perSecond * 60 >= 1) return (perSecond * 60).toFixed(1) + ' 任务/分钟';
+  return (perSecond * 3600).toFixed(0) + ' 任务/小时';
+}
+
+let selectedPercentile = 0.95;
+let trafficMode = 'derive';
+let latestScenario = null;
+let scenarioRevision = 0;
+const byId = (id) => document.getElementById(id);
+
+document.querySelectorAll('#pctSeg button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('#pctSeg button').forEach((item) => item.classList.remove('on'));
+    button.classList.add('on');
+    selectedPercentile = Number.parseFloat(button.dataset.p);
+    render();
+  };
+});
+document.querySelectorAll('#modeSeg button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('#modeSeg button').forEach((item) => item.classList.remove('on'));
+    button.classList.add('on');
+    trafficMode = button.dataset.m;
+    byId('directMode').classList.toggle('hidden', trafficMode !== 'direct');
+    byId('deriveMode').classList.toggle('hidden', trafficMode !== 'derive');
+    render();
+  };
+});
+['tol','tmin','tmax','workloadMix','empiricalSamples','price','rate','unit','daily','peakHrs','share','arrivalCv','peakFactor','maxUtilization','redundancy'].forEach((id) => {
+  byId(id).addEventListener('input', render);
+});
+byId('serviceModelKind').addEventListener('input', () => {
+  const kind = byId('serviceModelKind').value;
+  byId('uniformServiceMode').classList.toggle('hidden', kind !== 'uniform');
+  byId('mixServiceMode').classList.toggle('hidden', kind !== 'mix');
+  byId('empiricalServiceMode').classList.toggle('hidden', kind !== 'empirical');
+  render();
+});
+byId('arrivalPattern').addEventListener('input', () => {
+  const pattern = readArrivalPattern();
+  byId('arrivalCvCustomRow').classList.toggle('hidden', !pattern.isCustom);
+  render();
+});
+
+function readArrivalPattern(){
+  const selectedPattern = byId('arrivalPattern').value;
+  const isCustom = selectedPattern === 'custom';
+  return {
+    isCustom,
+    arrivalCv: isCustom
+      ? Math.max(0.05, Number.parseFloat(byId('arrivalCv').value) || 1)
+      : Number.parseFloat(selectedPattern),
+  };
+}
+
+function readServiceModel(){
+  const kind = byId('serviceModelKind').value;
+  if(kind === 'mix'){
+    return {
+      model: createWorkloadMixServiceModel(byId('workloadMix').value),
+      label: 'Workload Mix',
+    };
+  }
+  if(kind === 'empirical'){
+    return {
+      model: createEmpiricalServiceModel(byId('empiricalSamples').value),
+      label: '实测经验分布',
+    };
+  }
+  const minServiceTime = Number.parseFloat(byId('tmin').value);
+  const maxServiceTime = Number.parseFloat(byId('tmax').value);
+  return {
+    model: createUniformServiceModel({ minServiceTime, maxServiceTime }),
+    label: 'Uniform 区间',
+  };
+}
+
+function getTraffic(){
+  if(trafficMode === 'direct'){
+    return {
+      arrivalRate: (Number.parseFloat(byId('rate').value) || 0) / Number.parseFloat(byId('unit').value),
+      dailyTaskVolume: undefined,
+    };
+  }
+  const dailyTaskVolume = Number.parseFloat(byId('daily').value) || 0;
+  const peakHours = Math.max(0.01, Number.parseFloat(byId('peakHrs').value) || 1);
+  const peakShare = (Number.parseFloat(byId('share').value) || 0) / 100;
+  return {
+    arrivalRate: (dailyTaskVolume * peakShare) / (peakHours * 3600),
+    dailyTaskVolume,
+  };
+}
+
 function render(){
-  const L=Math.max(0.1,parseFloat($('tmin').value)||30);
-  const U=Math.max(L,parseFloat($('tmax').value)||90);
-  const ES=(L+U)/2;
-  const Cs=(U-L)/(Math.sqrt(3)*(U+L)), Cs2=Cs*Cs;
-  const tol=Math.max(1,parseFloat($('tol').value)||150);
-  const lambda=getLambda(), mu=1/ES, a=lambda*ES;
-  const pname={0.9:'P90',0.95:'P95',0.99:'P99'}[P];
-  const floor=L+P*(U-L);  // service-time percentile (no queue)
+  scenarioRevision += 1;
+  latestScenario = null;
+  byId('simulationResult').innerHTML = '解析输入已变化；需要时请重新运行仿真校验。';
+  let service;
+  try {
+    service = readServiceModel();
+    byId('serviceError').classList.add('hidden');
+    byId('serviceError').textContent = '';
+  } catch(error) {
+    byId('serviceError').classList.remove('hidden');
+    byId('serviceError').textContent = '⚠ ' + error.message;
+    byId('out').innerHTML = '<div class="card hint">请先修正服务时间模型输入。</div>';
+    return;
+  }
+  const serviceModel = service.model;
+  const { meanServiceTime, serviceCv } = serviceModel;
+  const servicePercentile = serviceTimePercentile(serviceModel, selectedPercentile);
+  const objectiveSeconds = Math.max(1, Number.parseFloat(byId('tol').value) || 150);
+  const traffic = getTraffic();
+  const peakFactor = Number.parseFloat(byId('peakFactor').value) || 1;
+  const { arrivalCv } = readArrivalPattern();
+  const designArrivalRate = calculateDesignArrivalRate({
+    observedRate: traffic.arrivalRate,
+    peakFactor,
+  });
+  const offeredLoad = designArrivalRate * meanServiceTime;
+  const percentileName = {0.9:'P90',0.95:'P95',0.99:'P99'}[selectedPercentile];
 
-  if(MODE==='derive'){
-    const daily=parseFloat($('daily').value)||0, share=(parseFloat($('share').value)||0)/100, peak=daily*share;
-    let txt='→ 峰值 ≈ '+fr(lambda)+'（高峰 '+Math.round(peak)+' 张 / '+$('peakHrs').value+'h）';
-    if((parseFloat($('peakHrs').value)||1)*3600 < 10*ES) txt+=' ⚠ 高峰偏短';
-    $('derivedRate').textContent=txt;
+  if(trafficMode === 'derive'){
+    const peakShare = (Number.parseFloat(byId('share').value) || 0) / 100;
+    const peakTasks = traffic.dailyTaskVolume * peakShare;
+    let derivedText = '→ 高峰时段平均速率 ≈ ' + formatRate(traffic.arrivalRate) +
+      '（' + Math.round(peakTasks) + ' 个任务 / ' + byId('peakHrs').value + 'h）';
+    if(peakFactor !== 1){
+      derivedText += ' · 设计到达率 ' + formatRate(designArrivalRate);
+    }
+    if((Number.parseFloat(byId('peakHrs').value) || 1) * 3600 < 10 * meanServiceTime){
+      derivedText += ' ⚠ 窗口过短，稳态近似可能不可靠';
+    }
+    byId('derivedRate').textContent = derivedText;
   }
 
-  let html='';
-  if(tol<=floor+0.01){
-    html=`<div class="warn"><b>⚠ 目标低于生图本身的 ${pname}（≈ ${Math.round(floor)}s）</b>
-      <div class="hint" style="margin-top:6px">不排队时，${pname} 也要 ~${Math.round(floor)}s（≈ 上限附近）。加机器只能消排队，消不掉生图本身。
-      要达标得降低上限分辨率、或优化生成速度。</div></div>`;
-    $('out').innerHTML=html; return;
+  if(objectiveSeconds <= servicePercentile){
+    byId('out').innerHTML = `<div class="warn"><b>⚠ 服务目标不高于任务处理时长本身的 ${percentileName}（≈ ${Math.round(servicePercentile)}s）</b>
+      <div class="hint" style="margin-top:6px">增加执行槽位只能减少排队，不能缩短任务自身的处理时长。请优化处理时长或放宽服务目标。</div></div>`;
+    return;
   }
-  if(lambda<=0){ $('out').innerHTML='<div class="card hint">填入日产量或速率。</div>'; return; }
-
-  const cStart=Math.max(1,Math.floor(a)+1);
-  const rows=[]; let ans=null;
-  for(let c=cStart;c<=cStart+20;c++){
-    const m=metrics(c,lambda,ES,Cs2,L,U);
-    const chosen=m['p'+Math.round(P*100)];
-    const meets=chosen<=tol;
-    rows.push({c,m,chosen,meets});
-    if(ans===null && meets) ans=c;
-    if(ans!==null && c>=ans+4) break;
+  if(designArrivalRate <= 0){
+    byId('out').innerHTML = '<div class="card hint">请填写每日任务量或持续到达率。</div>';
+    return;
   }
-  const ar=ans!==null?rows.find(r=>r.c===ans):null;
-  const price=parseFloat($('price').value)||0;
-  // monthly volume estimate (daily total × 30), independent of peak share
-  const dailyTotal = MODE==='derive' ? (parseFloat($('daily').value)||0) : lambda*86400;
-  const monthlyVol = dailyTotal*30;
-  const monthlyCost = (ans!==null&&price>0) ? ans*price : 0;
-  const perImg = (monthlyCost>0&&monthlyVol>0) ? monthlyCost/monthlyVol : 0;
-  const costStr=(ans!==null&&price>0)?` · 月成本 ≈ ${monthlyCost.toLocaleString()}`:'';
 
-  html+=`<div class="answer"><div class="hint" style="color:var(--muted)">守住 ${pname} ≤ ${tol}s，最少需要</div>
-    <div class="big">${ans!==null?ans:(cStart+'+')} <span style="font-size:20px;color:var(--muted)">张 GPU 卡</span></div>
-    ${ar?`<div class="sub">利用率 ${(ar.m.rho*100).toFixed(0)}% · 实际 ${pname} ≈ ${fs(ar.chosen)} · 平均 ≈ ${fs(ar.m.mean)}${costStr}</div>`:''}
-    ${perImg>0?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
-      <div class="hint" style="color:var(--muted)">每张图成本</div>
-      <div class="mono" style="font-size:30px;font-weight:800;color:var(--teal);margin-top:2px">${perImg<1?perImg.toFixed(3):perImg.toFixed(2)} <span style="font-size:15px;color:var(--muted)">/张</span></div>
-      <div class="hint" style="margin-top:4px">= 月成本 ${monthlyCost.toLocaleString()} ÷ 月产量 ${Math.round(monthlyVol).toLocaleString()} 张（日产 ${Math.round(dailyTotal).toLocaleString()}×30）${MODE==='direct'?' ⚠ 直接填速率模式下，日产量按峰值×全天粗估，偏高；建议用"从日产量推算"模式得到准确每张成本':''}</div>
-    </div>`:''}
+  const capacityResult = findMinimumCapacity({
+    arrivalRate: designArrivalRate,
+    arrivalCv,
+    serviceModel,
+    percentile: selectedPercentile,
+    objectiveSeconds,
+  });
+  if(capacityResult.status !== 'found'){
+    byId('out').innerHTML = `<div class="warn"><b>⚠ 在安全搜索上限内未找到可行容量</b>
+      <div class="hint" style="margin-top:6px">请检查输入规模与服务目标；计算器不会用“至少多少”代替未找到的答案。</div></div>`;
+    return;
+  }
+
+  const capacity = capacityResult.capacity;
+  const metrics = capacityResult.metrics;
+  const maxUtilization = byId('maxUtilization').value === 'none'
+    ? null
+    : Number.parseFloat(byId('maxUtilization').value);
+  const redundancy = Math.max(0, Number.parseInt(byId('redundancy').value, 10) || 0);
+  const production = recommendProductionCapacity({
+    theoreticalCapacity: capacity,
+    offeredLoad,
+    maxUtilization,
+    redundancy,
+  });
+  const priceText = byId('price').value.trim();
+  const calculateDisplayedCost = (slotCount) => {
+    const cost = calculateCapacityCost({
+      capacity: slotCount,
+      monthlySlotPrice: priceText === '' ? undefined : Number.parseFloat(priceText),
+      dailyTaskVolume: traffic.dailyTaskVolume,
+    });
+    return {
+      ...cost,
+      monthlyText: cost.monthlyCost === null
+        ? ''
+        : ` · 月成本 ≈ ${cost.monthlyCost.toLocaleString()}`,
+    };
+  };
+  const theoreticalCost = calculateDisplayedCost(capacity);
+  const productionCost = calculateDisplayedCost(production.productionCapacity);
+  const selectedEstimate = getPercentileEstimate(metrics, selectedPercentile);
+  latestScenario = {
+    analyticalCapacity: capacity,
+    arrivalRate: designArrivalRate,
+    arrivalCv,
+    serviceModel,
+    percentile: selectedPercentile,
+    objectiveSeconds,
+  };
+
+  const utilizationPolicy = maxUtilization === null ? '不限制利用率' : `利用率 ≤ ${(maxUtilization * 100).toFixed(0)}%`;
+  let html = `<div class="answer"><div class="hint" style="color:var(--muted)">${service.label} · 设计到达率 ${formatRate(designArrivalRate)} · C_a ${arrivalCv.toFixed(2)} · 估算 ${percentileName} ≤ ${objectiveSeconds}s</div>
+    <div class="capacity-grid">
+      <div class="capacity-result"><div class="hint">理论最少</div><div class="big">${capacity} <span style="font-size:15px;color:var(--muted)">个执行槽位</span></div>
+        <div class="sub">利用率 ${(metrics.utilization * 100).toFixed(0)}% · 估算 ${percentileName} ${formatSeconds(selectedEstimate)}${theoreticalCost.monthlyText}</div></div>
+      <div class="capacity-result production"><div class="hint">生产建议</div><div class="big">${production.productionCapacity} <span style="font-size:15px;color:var(--muted)">个执行槽位</span></div>
+        <div class="sub">${utilizationPolicy} · N+${production.redundancy}${productionCost.monthlyText}</div></div>
+    </div>`;
+  if(productionCost.costPerTask !== null){
+    html += `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="hint" style="color:var(--muted)">单任务容量成本</div>
+      <div class="mono" style="font-size:18px;font-weight:800;color:var(--teal);margin-top:4px">理论 ${theoreticalCost.costPerTask.toFixed(3)} /任务 · 生产建议 ${productionCost.costPerTask.toFixed(3)} /任务</div>
+      <div class="hint" style="margin-top:4px">基于月任务量 ${Math.round(traffic.dailyTaskVolume * 30).toLocaleString()}</div>
+    </div>`;
+  } else if(productionCost.monthlyCost !== null && trafficMode === 'direct'){
+    html += '<div class="hint" style="margin-top:12px">直接速率模式没有独立每日任务量，因此不估算单任务成本。</div>';
+  }
+  html += '</div>';
+
+  html += `<div class="stats" style="grid-template-columns:1fr 1fr">
+    <div class="stat"><div class="l">高峰时段平均速率</div><div class="v" style="color:var(--indigo)">${formatRate(traffic.arrivalRate)}</div><div class="s">观察窗口</div></div>
+    <div class="stat"><div class="l">设计到达率</div><div class="v" style="color:var(--teal)">${formatRate(designArrivalRate)}</div><div class="s">峰值系数 ${peakFactor.toFixed(1)}×</div></div>
+  </div><div class="stats" style="grid-template-columns:1fr 1fr">
+    <div class="stat"><div class="l">到达变异 C_a</div><div class="v" style="color:${arrivalCv <= 1 ? 'var(--green)' : 'var(--amber)'}">${arrivalCv.toFixed(2)}</div><div class="s">到达间隔近似</div></div>
+    <div class="stat"><div class="l">负载量 a</div><div class="v" style="color:var(--teal)">${offeredLoad.toFixed(1)}</div><div class="s">平均在处理任务数</div></div>
+  </div>`;
+  html += `<div class="stats">
+    <div class="stat"><div class="l">服务变异 C_s</div><div class="v" style="color:${serviceCv < 0.4 ? 'var(--green)' : 'var(--amber)'}">${serviceCv.toFixed(2)}</div><div class="s">越小越集中</div></div>
+    <div class="stat"><div class="l">平均处理时长 E[S]</div><div class="v">${meanServiceTime.toFixed(0)}s</div></div>
+    <div class="stat"><div class="l">${percentileName} 服务时间下界</div><div class="v" style="color:var(--muted)">${Math.round(servicePercentile)}s</div><div class="s">无排队时</div></div>
   </div>`;
 
-  html+=`<div class="stats">
-    <div class="stat"><div class="l">峰值速率</div><div class="v" style="color:var(--indigo)">${fr(lambda)}</div><div class="s">用于计算</div></div>
-    <div class="stat"><div class="l">负载量 a</div><div class="v" style="color:var(--teal)">${a.toFixed(1)}</div><div class="s">平均并发</div></div>
-    <div class="stat"><div class="l">服务波动 C_s</div><div class="v" style="color:${Cs<0.4?'var(--green)':'var(--amber)'}">${Cs.toFixed(2)}</div><div class="s">越小越稳</div></div>
-  </div>`;
-  html+=`<div class="stats" style="grid-template-columns:1fr 1fr">
-    <div class="stat"><div class="l">平均生图 E[S]</div><div class="v">${ES.toFixed(0)}s</div></div>
-    <div class="stat"><div class="l">${pname} 服务地板</div><div class="v" style="color:var(--muted)">${Math.round(floor)}s</div><div class="s">无排队下限</div></div>
-  </div>`;
-
-  const hi=Math.round(P*100);
-  html+=`<div class="card"><div class="hint" style="margin-bottom:8px">每个机器数对应的延迟（绿=达标，高亮列=你选的 ${pname}）</div><div class="scroll"><table>
-    <tr><th>台数</th><th>利用率</th><th>平均</th><th class="${hi===90?'colhi':''}">P90</th><th class="${hi===95?'colhi':''}">P95</th><th class="${hi===99?'colhi':''}">P99</th><th></th></tr>`;
-  rows.forEach(r=>{const cls=(r.meets?'meets ':'')+(r.c===ans?'first':'');
-    html+=`<tr class="${cls}"><td>${r.c}</td><td>${(r.m.rho*100).toFixed(0)}%</td><td>${fs(r.m.mean)}</td>
-      <td class="${hi===90?'colhi':''}">${fs(r.m.p90)}</td><td class="${hi===95?'colhi':''}">${fs(r.m.p95)}</td><td class="${hi===99?'colhi':''}">${fs(r.m.p99)}</td><td>${r.meets?'✓':''}</td></tr>`;});
-  html+=`</table></div></div>`;
-
-  html+=`<div class="note">📌 这是按"稳定服务"建模的结果——比指数假设现实得多。若你的实际耗时比 [${L},${U}]s 还集中，可把上下限调窄，需要的机器还会更少。务必用线上真实 P95 回填校准。</div>`;
-  $('out').innerHTML=html;
+  const firstCandidate = Math.max(capacityResult.minimumStableCapacity, capacity - 4);
+  const lastCandidate = capacity + 4;
+  const rows = [];
+  for(let candidate = firstCandidate; candidate <= lastCandidate; candidate += 1){
+    const candidateMetrics = estimateCapacityMetrics({
+      capacity: candidate,
+      arrivalRate: designArrivalRate,
+      arrivalCv,
+      serviceModel,
+    });
+    rows.push({
+      capacity: candidate,
+      metrics: candidateMetrics,
+      meets: getPercentileEstimate(candidateMetrics, selectedPercentile) <= objectiveSeconds,
+    });
+  }
+  const highlightedPercentile = Math.round(selectedPercentile * 100);
+  html += `<div class="card"><div class="hint" style="margin-bottom:8px">最小解附近各容量的估算完成时延（绿=达标，高亮列=${percentileName}）</div><div class="scroll"><table>
+    <tr><th>执行槽位</th><th>利用率</th><th>估算平均</th><th class="${highlightedPercentile === 90 ? 'colhi' : ''}">估算 P90</th><th class="${highlightedPercentile === 95 ? 'colhi' : ''}">估算 P95</th><th class="${highlightedPercentile === 99 ? 'colhi' : ''}">估算 P99</th><th></th></tr>`;
+  rows.forEach((row) => {
+    const classes = (row.meets ? 'meets ' : '') + (row.capacity === capacity ? 'first' : '');
+    html += `<tr class="${classes}"><td>${row.capacity}</td><td>${(row.metrics.utilization * 100).toFixed(0)}%</td><td>${formatSeconds(row.metrics.mean)}</td>
+      <td class="${highlightedPercentile === 90 ? 'colhi' : ''}">${formatSeconds(row.metrics.p90)}</td><td class="${highlightedPercentile === 95 ? 'colhi' : ''}">${formatSeconds(row.metrics.p95)}</td><td class="${highlightedPercentile === 99 ? 'colhi' : ''}">${formatSeconds(row.metrics.p99)}</td><td>${row.meets ? '✓' : ''}</td></tr>`;
+  });
+  html += '</table></div></div>';
+  html += `<div class="note">📌 当前结果是快速工程估算，不是生产实测值。适用于任务进入一个公共队列、执行槽位近似同质且每个槽位同时只处理一个任务的系统；多阶段流水线、动态批处理、优先级和多资源任务不在当前模型范围内。</div>`;
+  byId('out').innerHTML = html;
 }
+
+function executeSimulation(input){
+  if(typeof Worker === 'undefined'){
+    return Promise.resolve(runSimulationCheck(input));
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./simulation-worker.mjs', {type:'module'});
+    worker.onmessage = ({data}) => {
+      worker.terminate();
+      if(data.error) reject(new Error(data.error));
+      else resolve(data.result);
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || '仿真 Worker 运行失败'));
+    };
+    worker.postMessage(input);
+  });
+}
+
+function readSimulationInteger(id){
+  const text = byId(id).value.trim();
+  return text === '' ? Number.NaN : Number(text);
+}
+
+byId('runSimulation').onclick = async () => {
+  if(!latestScenario){
+    byId('simulationResult').textContent = '请先提供有效的解析输入。';
+    return;
+  }
+  const scenario = latestScenario;
+  const revision = scenarioRevision;
+  const button = byId('runSimulation');
+  button.disabled = true;
+  button.textContent = '校验中…';
+  byId('simulationResult').textContent = '正在运行带预热的重复离散事件仿真…';
+  try {
+    const warmupTasks = readSimulationInteger('warmupTasks');
+    const measuredTasks = readSimulationInteger('measuredTasks');
+    const repetitions = readSimulationInteger('repetitions');
+    const seed = readSimulationInteger('simulationSeed');
+    const result = await executeSimulation({
+      ...scenario,
+      warmupTasks,
+      measuredTasks,
+      repetitions,
+      seed,
+    });
+    if(revision !== scenarioRevision){
+      byId('simulationResult').textContent = '解析输入已变化；已忽略旧场景的仿真结果，请重新运行。';
+      return;
+    }
+    const percentileName = {0.9:'P90',0.95:'P95',0.99:'P99'}[scenario.percentile];
+    const metricName = percentileName.toLowerCase();
+    let html = result.status === 'found'
+      ? `<div class="note">仿真校验建议：至少 <b>${result.recommendedCapacity} 个执行槽位</b>。判定标准是 ${percentileName} 的 95% 区间上界不超过 ${scenario.objectiveSeconds}s。</div>`
+      : '<div class="warn"><b>在仿真安全搜索上限内未找到可信达标容量。</b></div>';
+    html += `<div class="scroll"><table><tr><th>执行槽位</th><th>${percentileName} 点估计</th><th>95% 区间</th><th>判定</th></tr>`;
+    result.evaluations.forEach((evaluation) => {
+      const metric = evaluation.simulation[metricName];
+      html += `<tr class="${evaluation.meetsObjective ? 'meets' : ''}"><td>${evaluation.capacity}</td><td>${formatSeconds(metric.estimate)}</td><td>${formatSeconds(metric.lower)} – ${formatSeconds(metric.upper)}</td><td>${evaluation.meetsObjective ? '✓' : '未可信达标'}</td></tr>`;
+    });
+    html += `</table></div><div class="hint" style="margin-top:8px">Gamma renewal 到达；种子 ${seed}；预热 ${warmupTasks.toLocaleString()}；每个候选 ${repetitions} 次 × ${measuredTasks.toLocaleString()} 个计量任务。区间反映重复运行的抽样不确定性，不是生产保证。</div>`;
+    byId('simulationResult').innerHTML = html;
+  } catch(error) {
+    if(revision !== scenarioRevision){
+      byId('simulationResult').textContent = '解析输入已变化；已忽略旧场景的仿真结果，请重新运行。';
+    } else {
+      byId('simulationResult').innerHTML = `<div class="warn"><b>⚠ 仿真输入无效</b><div class="hint">${error.message}</div></div>`;
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = '运行校验';
+  }
+};
+
 render();
 </script>

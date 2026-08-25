@@ -52,6 +52,14 @@
   .capacity-result.production{border-color:#34d6c866; background:#34d6c80b}
   .capacity-result .big{font-size:36px; margin-top:8px}
   .capacity-result.production .big{color:var(--teal)}
+  .packaging{margin-top:12px; padding-top:10px; border-top:1px solid var(--line); color:var(--text); font-size:11.5px; line-height:1.6}
+  .cost-inputs,.quote-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+  .cost-input{background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:11px}
+  .cost-input input{width:100%; margin-top:7px}
+  .quote-grid{grid-template-columns:1fr 1fr; margin-top:14px; text-align:left}
+  .quote-grid.single{grid-template-columns:1fr}
+  .quote{background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:14px}
+  .quote .total{font:800 17px 'JetBrains Mono',monospace; color:var(--teal); margin-top:8px; line-height:1.55}
   .stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:12px}
   .stat{background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:13px 9px; text-align:center}
   .stat .l{font-size:11px; color:var(--muted); margin-bottom:5px}
@@ -70,7 +78,7 @@
   .warn b{color:var(--red)}
   .note{background:#34d6c812; border:1px solid #34d6c844; border-radius:12px; padding:12px 14px; margin-top:12px; font-size:12px; color:var(--teal); line-height:1.6}
   .foot{font-size:11.5px; color:var(--muted); text-align:center; margin-top:18px; line-height:1.7}
-  @media(max-width:480px){.capacity-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+  @media(max-width:480px){.capacity-grid,.quote-grid{grid-template-columns:1fr}.cost-inputs{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
 </style>
 
 <div class="wrap">
@@ -90,7 +98,8 @@
     <div class="frow"><code>估算 Pp 完成时延 = 排队 + 处理时长的近似分位</code><span>用条件指数等待分布匹配近似平均等待时间，再数值反求</span></div>
     <div class="frow"><code>c* = 最小的 c，使估算 Pp(c) ≤ 服务目标</code><span>从 floor(a)+1 开始自适应扩大范围，再查找最小可行容量</span></div>
     <div class="frow"><code>生产容量 = max(c*, ceil(a/利用率上限)) + 冗余</code><span>生产建议是显式策略，不是排队公式的理论结果</span></div>
-    <div class="frow"><code>月成本 = c* × 单执行槽位月成本</code></div>
+    <div class="frow"><code>节点数 = ceil(需求槽位 ÷ 每节点槽位数)</code><span>采购必须向上取整为完整节点；已采购槽位 = 节点数 × 每节点槽位数</span></div>
+    <div class="frow"><code>节点报价总成本 = 节点数 × 单节点月成本</code><span>槽位报价总成本 = 已采购槽位 × 单槽位月成本；两种报价独立展示，不相加</span></div>
     <div class="frow"><code>仿真到达间隔 ~ Gamma(mean=1/λ_design, CV=C_a)</code><span>仿真校验使用 Gamma renewal 近似；它不代表相关或非平稳的真实流量轨迹</span></div>
   </details>
 
@@ -128,10 +137,15 @@
       <textarea id="empiricalSamples">30 40 50 60 70 80 90</textarea>
     </div>
     <div id="serviceError" class="warn hidden" style="margin:0 0 16px"></div>
-    <div class="row">
-      <div><label>单执行槽位月成本（可选）</label><div class="hint">用于估算满足服务目标所需的容量成本</div></div>
-      <div style="display:flex;align-items:center;gap:6px"><input type="number" id="price" value="" placeholder="0"><span class="mono" style="color:var(--muted)">/月</span></div>
+    <div class="divider"></div>
+
+    <div style="margin-bottom:12px"><label style="font-weight:800">整节点采购与成本</label><div class="hint">容量仍按执行槽位计算；采购按完整节点向上取整。两种价格是独立报价口径，不会相加。</div></div>
+    <div class="cost-inputs">
+      <div class="cost-input"><label>每节点槽位数</label><input type="number" id="slotsPerNode" value="8" min="1" step="1"><div class="hint">例如每台 8 个槽位</div></div>
+      <div class="cost-input"><label>单槽位月成本</label><input type="number" id="slotPrice" value="" min="0" placeholder="可选"><div class="hint">按已采购槽位计费</div></div>
+      <div class="cost-input"><label>单节点月成本</label><input type="number" id="nodePrice" value="" min="0" placeholder="可选"><div class="hint">按完整节点计费</div></div>
     </div>
+    <div id="costError" class="warn hidden" style="margin:12px 0 0"></div>
 
     <div class="divider"></div>
 
@@ -219,7 +233,7 @@
 
 <script type="module">
 import {
-  calculateCapacityCost,
+  calculatePackagedCapacityCost,
   calculateDesignArrivalRate,
   createEmpiricalServiceModel,
   createUniformServiceModel,
@@ -266,7 +280,7 @@ document.querySelectorAll('#modeSeg button').forEach((button) => {
     render();
   };
 });
-['tol','tmin','tmax','workloadMix','empiricalSamples','price','rate','unit','daily','peakHrs','share','arrivalCv','peakFactor','maxUtilization','redundancy'].forEach((id) => {
+['tol','tmin','tmax','workloadMix','empiricalSamples','slotsPerNode','slotPrice','nodePrice','rate','unit','daily','peakHrs','share','arrivalCv','peakFactor','maxUtilization','redundancy'].forEach((id) => {
   byId(id).addEventListener('input', render);
 });
 byId('serviceModelKind').addEventListener('input', () => {
@@ -315,6 +329,28 @@ function readServiceModel(){
   };
 }
 
+function readOptionalPrice(id, label){
+  const text = byId(id).value.trim();
+  if(text === '') return undefined;
+  const value = Number(text);
+  if(!Number.isFinite(value) || value < 0){
+    throw new RangeError(label + '必须是大于或等于 0 的有限数值');
+  }
+  return value;
+}
+
+function readNodePricing(){
+  const slotsPerNode = Number(byId('slotsPerNode').value);
+  if(!Number.isInteger(slotsPerNode) || slotsPerNode <= 0){
+    throw new RangeError('每节点槽位数必须是正整数');
+  }
+  return {
+    slotsPerNode,
+    monthlySlotPrice: readOptionalPrice('slotPrice', '单槽位月成本'),
+    monthlyNodePrice: readOptionalPrice('nodePrice', '单节点月成本'),
+  };
+}
+
 function getTraffic(){
   if(trafficMode === 'direct'){
     return {
@@ -349,6 +385,17 @@ function render(){
   const serviceModel = service.model;
   const { meanServiceTime, serviceCv } = serviceModel;
   const servicePercentile = serviceTimePercentile(serviceModel, selectedPercentile);
+  let pricing;
+  try {
+    pricing = readNodePricing();
+    byId('costError').classList.add('hidden');
+    byId('costError').textContent = '';
+  } catch(error) {
+    byId('costError').classList.remove('hidden');
+    byId('costError').textContent = '⚠ ' + error.message;
+    byId('out').innerHTML = '<div class="card hint">请先修正整节点采购与成本输入。</div>';
+    return;
+  }
   const objectiveSeconds = Math.max(1, Number.parseFloat(byId('tol').value) || 150);
   const traffic = getTraffic();
   const peakFactor = Number.parseFloat(byId('peakFactor').value) || 1;
@@ -409,19 +456,12 @@ function render(){
     maxUtilization,
     redundancy,
   });
-  const priceText = byId('price').value.trim();
   const calculateDisplayedCost = (slotCount) => {
-    const cost = calculateCapacityCost({
+    return calculatePackagedCapacityCost({
       capacity: slotCount,
-      monthlySlotPrice: priceText === '' ? undefined : Number.parseFloat(priceText),
+      ...pricing,
       dailyTaskVolume: traffic.dailyTaskVolume,
     });
-    return {
-      ...cost,
-      monthlyText: cost.monthlyCost === null
-        ? ''
-        : ` · 月成本 ≈ ${cost.monthlyCost.toLocaleString()}`,
-    };
   };
   const theoreticalCost = calculateDisplayedCost(capacity);
   const productionCost = calculateDisplayedCost(production.productionCapacity);
@@ -436,21 +476,40 @@ function render(){
   };
 
   const utilizationPolicy = maxUtilization === null ? '不限制利用率' : `利用率 ≤ ${(maxUtilization * 100).toFixed(0)}%`;
+  const packagingText = (cost) =>
+    `${cost.nodeCount} 个节点 · ${cost.allocatedCapacity} 个已采购槽位 · 装箱余量 ${cost.packagingHeadroom}`;
+  const formatCost = (value) => value.toLocaleString(undefined, {maximumFractionDigits:2});
   let html = `<div class="answer"><div class="hint" style="color:var(--muted)">${service.label} · 设计到达率 ${formatRate(designArrivalRate)} · C_a ${arrivalCv.toFixed(2)} · 估算 ${percentileName} ≤ ${objectiveSeconds}s</div>
     <div class="capacity-grid">
       <div class="capacity-result"><div class="hint">理论最少</div><div class="big">${capacity} <span style="font-size:15px;color:var(--muted)">个执行槽位</span></div>
-        <div class="sub">利用率 ${(metrics.utilization * 100).toFixed(0)}% · 估算 ${percentileName} ${formatSeconds(selectedEstimate)}${theoreticalCost.monthlyText}</div></div>
+        <div class="sub">利用率 ${(metrics.utilization * 100).toFixed(0)}% · 估算 ${percentileName} ${formatSeconds(selectedEstimate)}</div>
+        <div class="packaging">${packagingText(theoreticalCost)}</div></div>
       <div class="capacity-result production"><div class="hint">生产建议</div><div class="big">${production.productionCapacity} <span style="font-size:15px;color:var(--muted)">个执行槽位</span></div>
-        <div class="sub">${utilizationPolicy} · N+${production.redundancy}${productionCost.monthlyText}</div></div>
+        <div class="sub">${utilizationPolicy} · N+${production.redundancy}</div>
+        <div class="packaging">${packagingText(productionCost)}</div></div>
     </div>`;
-  if(productionCost.costPerTask !== null){
-    html += `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
-      <div class="hint" style="color:var(--muted)">单任务容量成本</div>
-      <div class="mono" style="font-size:18px;font-weight:800;color:var(--teal);margin-top:4px">理论 ${theoreticalCost.costPerTask.toFixed(3)} /任务 · 生产建议 ${productionCost.costPerTask.toFixed(3)} /任务</div>
-      <div class="hint" style="margin-top:4px">基于月任务量 ${Math.round(traffic.dailyTaskVolume * 30).toLocaleString()}</div>
-    </div>`;
-  } else if(productionCost.monthlyCost !== null && trafficMode === 'direct'){
-    html += '<div class="hint" style="margin-top:12px">直接速率模式没有独立每日任务量，因此不估算单任务成本。</div>';
+  const quoteCards = [
+    {label:'按槽位报价', monthly:'monthlySlotCost', perTask:'slotCostPerTask', hint:'按整节点内全部已采购槽位计费'},
+    {label:'按节点报价', monthly:'monthlyNodeCost', perTask:'nodeCostPerTask', hint:'按向上取整后的完整节点计费'},
+  ].flatMap((quote) => {
+    const theoreticalMonthly = theoreticalCost[quote.monthly];
+    if(theoreticalMonthly === null) return [];
+    const productionMonthly = productionCost[quote.monthly];
+    const theoreticalPerTask = theoreticalCost[quote.perTask];
+    const perTask = theoreticalPerTask === null ? '' :
+      `<div class="hint">单任务：理论 ${theoreticalPerTask.toFixed(3)} · 生产 ${productionCost[quote.perTask].toFixed(3)}</div>`;
+    return [`<div class="quote"><label>${quote.label}</label><div class="total">理论 ${formatCost(theoreticalMonthly)} /月<br>生产 ${formatCost(productionMonthly)} /月</div>
+      <div class="hint">${quote.hint}</div>${perTask}</div>`];
+  });
+  if(quoteCards.length > 0){
+    const quoteGridClass = quoteCards.length === 1 ? 'quote-grid single' : 'quote-grid';
+    html += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div class="hint">采购成本 · 两种报价独立展示，不相加</div><div class="${quoteGridClass}">${quoteCards.join('')}</div>`;
+    if(trafficMode === 'direct'){
+      html += '<div class="hint" style="margin-top:10px">直接速率模式没有独立每日任务量，因此不估算单任务成本。</div>';
+    } else {
+      html += `<div class="hint" style="margin-top:10px">单任务折算基于月任务量 ${Math.round(traffic.dailyTaskVolume * 30).toLocaleString()}</div>`;
+    }
+    html += '</div>';
   }
   html += '</div>';
 

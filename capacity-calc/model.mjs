@@ -433,21 +433,50 @@ export function estimateCapacityMetrics({
   };
 }
 
-export function calculateCapacityCost({
+export function calculateNodePackaging({ requiredCapacity, slotsPerNode }) {
+  if (!Number.isInteger(slotsPerNode) || slotsPerNode <= 0) {
+    throw new RangeError('每节点槽位数必须是正整数');
+  }
+  const nodeCount = Math.ceil(requiredCapacity / slotsPerNode);
+  const allocatedCapacity = nodeCount * slotsPerNode;
+  return {
+    nodeCount,
+    allocatedCapacity,
+    packagingHeadroom: allocatedCapacity - requiredCapacity,
+  };
+}
+
+export function calculatePackagedCapacityCost({
   capacity,
+  slotsPerNode,
   monthlySlotPrice,
+  monthlyNodePrice,
   dailyTaskVolume,
 }) {
-  const hasPrice =
+  const packaging = calculateNodePackaging({
+    requiredCapacity: capacity,
+    slotsPerNode,
+  });
+  const hasSlotPrice =
     Number.isFinite(monthlySlotPrice) && monthlySlotPrice >= 0;
-  const monthlyCost = hasPrice ? capacity * monthlySlotPrice : null;
+  const hasNodePrice =
+    Number.isFinite(monthlyNodePrice) &&
+    monthlyNodePrice >= 0;
+  const monthlySlotCost = hasSlotPrice
+    ? packaging.allocatedCapacity * monthlySlotPrice
+    : null;
+  const monthlyNodeCost = hasNodePrice
+    ? packaging.nodeCount * monthlyNodePrice
+    : null;
   const hasVolume = Number.isFinite(dailyTaskVolume) && dailyTaskVolume > 0;
+  const costPerTask = (cost) =>
+    cost !== null && hasVolume ? cost / (dailyTaskVolume * 30) : null;
   return {
-    monthlyCost,
-    costPerTask:
-      monthlyCost !== null && hasVolume
-        ? monthlyCost / (dailyTaskVolume * 30)
-        : null,
+    ...packaging,
+    monthlySlotCost,
+    monthlyNodeCost,
+    slotCostPerTask: costPerTask(monthlySlotCost),
+    nodeCostPerTask: costPerTask(monthlyNodeCost),
   };
 }
 

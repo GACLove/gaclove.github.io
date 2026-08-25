@@ -48,7 +48,12 @@
   .answer .big{font-size:48px; font-weight:800; color:var(--indigo); line-height:1; font-family:'JetBrains Mono',monospace}
   .answer .sub{font-size:12.5px; color:var(--muted); margin-top:10px; font-family:'JetBrains Mono',monospace}
   .result-shell{text-align:left}
-  .result-context{text-align:center; padding-bottom:16px; border-bottom:1px solid var(--line)}
+  .result-context{text-align:center; padding-bottom:14px}
+  .share-strip{display:flex; justify-content:space-between; align-items:center; gap:14px; padding:12px 0 14px; border-bottom:1px solid var(--line)}
+  .share-options{display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap}
+  .share-option{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:11.5px; white-space:nowrap; cursor:pointer}
+  .share-option input{accent-color:var(--indigo)}
+  .share-status{min-height:17px; margin-top:7px; color:var(--teal); text-align:right}
   .procurement-panel{margin-top:16px; padding:16px; background:#0a0d1480; border:1px solid #6c8cff33; border-radius:13px}
   .procurement-heading{margin-bottom:12px}
   .capacity-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; text-align:left}
@@ -83,7 +88,7 @@
   .warn b{color:var(--red)}
   .note{background:#34d6c812; border:1px solid #34d6c844; border-radius:12px; padding:12px 14px; margin-top:12px; font-size:12px; color:var(--teal); line-height:1.6}
   .foot{font-size:11.5px; color:var(--muted); text-align:center; margin-top:18px; line-height:1.7}
-  @media(max-width:480px){.capacity-grid,.quote-grid{grid-template-columns:1fr}.cost-inputs{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+  @media(max-width:480px){.capacity-grid,.quote-grid{grid-template-columns:1fr}.cost-inputs{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.share-strip{align-items:flex-start; flex-direction:column}.share-options{justify-content:flex-start}.share-status{text-align:left}}
 </style>
 
 <div class="wrap">
@@ -212,6 +217,16 @@
 
   <section class="answer result-shell" id="resultShell">
     <div id="resultContext" class="hint result-context"></div>
+    <div class="share-strip">
+      <div><label style="font-weight:800">分享当前方案</label><div class="hint">参数写入链接并由浏览器读取；成本需显式勾选</div></div>
+      <div>
+        <div class="share-options">
+          <label class="share-option"><input type="checkbox" id="shareCosts">包含成本参数</label>
+          <button class="action" id="copyShareLink" type="button">复制方案链接</button>
+        </div>
+        <div id="shareStatus" class="hint share-status" aria-live="polite"></div>
+      </div>
+    </div>
     <div class="procurement-panel">
       <div class="procurement-heading"><label style="font-weight:800">整节点采购与成本</label><div class="hint">容量按执行槽位计算，采购按完整节点向上取整。槽位与节点单价双向换算；两种成本对照展示，不相加。</div></div>
       <div class="cost-inputs">
@@ -272,6 +287,14 @@ let latestScenario = null;
 let scenarioRevision = 0;
 let pricingBasis = null;
 const byId = (id) => document.getElementById(id);
+const SHARED_SCENARIO_VERSION = 1;
+const SHARED_SCENARIO_VALUE_IDS = [
+  'tol','serviceModelKind','tmin','tmax','workloadMix','empiricalSamples',
+  'daily','peakHrs','share','rate','unit','arrivalPattern','arrivalCv',
+  'peakFactor','maxUtilization','redundancy','slotsPerNode',
+  'simulationSeed','warmupTasks','measuredTasks','repetitions',
+];
+const MAX_SHARED_URL_LENGTH = 8000;
 
 document.querySelectorAll('#pctSeg button').forEach((button) => {
   button.onclick = () => {
@@ -313,6 +336,134 @@ byId('arrivalPattern').addEventListener('input', () => {
   byId('arrivalCvCustomRow').classList.toggle('hidden', !pattern.isCustom);
   render();
 });
+
+function syncScenarioControls(){
+  document.querySelectorAll('#pctSeg button').forEach((button) => {
+    button.classList.toggle('on', Number.parseFloat(button.dataset.p) === selectedPercentile);
+  });
+  document.querySelectorAll('#modeSeg button').forEach((button) => {
+    button.classList.toggle('on', button.dataset.m === trafficMode);
+  });
+  byId('directMode').classList.toggle('hidden', trafficMode !== 'direct');
+  byId('deriveMode').classList.toggle('hidden', trafficMode !== 'derive');
+  const serviceKind = byId('serviceModelKind').value;
+  byId('uniformServiceMode').classList.toggle('hidden', serviceKind !== 'uniform');
+  byId('mixServiceMode').classList.toggle('hidden', serviceKind !== 'mix');
+  byId('empiricalServiceMode').classList.toggle('hidden', serviceKind !== 'empirical');
+  byId('arrivalCvCustomRow').classList.toggle('hidden', byId('arrivalPattern').value !== 'custom');
+}
+
+function captureSharedScenario(){
+  const values = {};
+  SHARED_SCENARIO_VALUE_IDS.forEach((id) => {
+    values[id] = byId(id).value;
+  });
+  const scenario = {
+    version: SHARED_SCENARIO_VERSION,
+    percentile: selectedPercentile,
+    trafficMode,
+    values,
+  };
+  if(byId('shareCosts').checked){
+    const basis = pricingBasis || (byId('nodePrice').value.trim() !== '' ? 'node' : byId('slotPrice').value.trim() !== '' ? 'slot' : null);
+    if(basis){
+      readNodePricing();
+      scenario.pricing = {
+        basis,
+        value: byId(basis === 'node' ? 'nodePrice' : 'slotPrice').value,
+      };
+    }
+  }
+  return scenario;
+}
+
+function buildSharedScenarioUrl(){
+  const url = new URL(window.location.href);
+  url.hash = 'scenario=' + encodeURIComponent(JSON.stringify(captureSharedScenario()));
+  const sharedUrl = url.toString();
+  if(sharedUrl.length > MAX_SHARED_URL_LENGTH){
+    throw new RangeError('当前参数生成的链接过长，请减少实测样本后重试。');
+  }
+  return sharedUrl;
+}
+
+function applySharedScenarioFromHash(){
+  if(!window.location.hash.startsWith('#scenario=')) return;
+  try {
+    if(window.location.href.length > MAX_SHARED_URL_LENGTH) throw new RangeError('分享链接过长');
+    const scenario = JSON.parse(decodeURIComponent(window.location.hash.slice('#scenario='.length)));
+    if(!scenario || scenario.version !== SHARED_SCENARIO_VERSION || !scenario.values || typeof scenario.values !== 'object'){
+      throw new TypeError('链接版本不受支持');
+    }
+    if(![0.9,0.95,0.99].includes(scenario.percentile)) throw new TypeError('服务分位无效');
+    if(!['derive','direct'].includes(scenario.trafficMode)) throw new TypeError('流量模式无效');
+    const pendingValues = {};
+    SHARED_SCENARIO_VALUE_IDS.forEach((id) => {
+      const value = scenario.values[id];
+      if(value === undefined) return;
+      if(typeof value !== 'string') throw new TypeError(id + ' 参数无效');
+      pendingValues[id] = value;
+    });
+    const allowedValues = {
+      serviceModelKind: ['uniform','mix','empirical'],
+      unit: ['3600','60','1'],
+      arrivalPattern: ['0.5','1','1.5','2','custom'],
+      peakFactor: ['1','1.1','1.3','1.5','2'],
+      maxUtilization: ['0.7','0.8','0.85','none'],
+    };
+    Object.entries(allowedValues).forEach(([id, allowed]) => {
+      const value = pendingValues[id];
+      if(value !== undefined && !allowed.includes(value)) throw new TypeError(id + ' 参数无效');
+    });
+    let resolvedPricing = null;
+    let resolvedPricingBasis = null;
+    if(scenario.pricing !== undefined){
+      if(!scenario.pricing || !['slot','node'].includes(scenario.pricing.basis) || typeof scenario.pricing.value !== 'string'){
+        throw new TypeError('成本参数无效');
+      }
+      const price = Number(scenario.pricing.value);
+      const slotsPerNode = Number(pendingValues.slotsPerNode ?? byId('slotsPerNode').value);
+      resolvedPricing = resolveLinkedNodePricing({
+        slotsPerNode,
+        ...(scenario.pricing.basis === 'slot' ? {monthlySlotPrice:price} : {monthlyNodePrice:price}),
+      });
+      resolvedPricingBasis = scenario.pricing.basis;
+    }
+    SHARED_SCENARIO_VALUE_IDS.forEach((id) => {
+      if(pendingValues[id] !== undefined) byId(id).value = pendingValues[id];
+    });
+    byId('slotPrice').value = '';
+    byId('nodePrice').value = '';
+    byId('shareCosts').checked = false;
+    pricingBasis = null;
+    if(resolvedPricing){
+      byId('slotPrice').value = formatPriceInput(resolvedPricing.monthlySlotPrice);
+      byId('nodePrice').value = formatPriceInput(resolvedPricing.monthlyNodePrice);
+      byId('shareCosts').checked = true;
+      pricingBasis = resolvedPricingBasis;
+    }
+    selectedPercentile = scenario.percentile;
+    trafficMode = scenario.trafficMode;
+    syncScenarioControls();
+    byId('shareStatus').textContent = '已载入分享方案';
+  } catch(error) {
+    byId('shareStatus').textContent = '⚠ 分享链接无效：' + error.message;
+  }
+}
+
+byId('copyShareLink').onclick = async () => {
+  try {
+    const sharedUrl = buildSharedScenarioUrl();
+    if(!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function'){
+      throw new Error('当前浏览器不支持自动复制');
+    }
+    await navigator.clipboard.writeText(sharedUrl);
+    const includesPricing = byId('shareCosts').checked && (byId('slotPrice').value.trim() !== '' || byId('nodePrice').value.trim() !== '');
+    byId('shareStatus').textContent = includesPricing ? '✓ 方案链接已复制（包含成本）' : '✓ 方案链接已复制（未包含成本）';
+  } catch(error) {
+    byId('shareStatus').textContent = '⚠ ' + error.message;
+  }
+};
 
 function readArrivalPattern(){
   const selectedPattern = byId('arrivalPattern').value;
@@ -689,5 +840,6 @@ byId('runSimulation').onclick = async () => {
   }
 };
 
+applySharedScenarioFromHash();
 initializeLinkedPricing();
 </script>

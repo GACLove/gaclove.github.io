@@ -446,6 +446,45 @@ export function calculateNodePackaging({ requiredCapacity, slotsPerNode }) {
   };
 }
 
+export function resolveLinkedNodePricing({
+  slotsPerNode,
+  monthlySlotPrice,
+  monthlyNodePrice,
+}) {
+  if (!Number.isInteger(slotsPerNode) || slotsPerNode <= 0) {
+    throw new RangeError('每节点槽位数必须是正整数');
+  }
+  const hasSlotPrice = monthlySlotPrice !== undefined && monthlySlotPrice !== null;
+  const hasNodePrice = monthlyNodePrice !== undefined && monthlyNodePrice !== null;
+  if (hasSlotPrice && (!Number.isFinite(monthlySlotPrice) || monthlySlotPrice < 0)) {
+    throw new RangeError('单槽位月成本必须是大于或等于 0 的有限数值');
+  }
+  if (hasNodePrice && (!Number.isFinite(monthlyNodePrice) || monthlyNodePrice < 0)) {
+    throw new RangeError('单节点月成本必须是大于或等于 0 的有限数值');
+  }
+  if (!hasSlotPrice && !hasNodePrice) {
+    return { monthlySlotPrice: null, monthlyNodePrice: null };
+  }
+  if (hasSlotPrice && hasNodePrice) {
+    const expectedNodePrice = monthlySlotPrice * slotsPerNode;
+    const tolerance = Math.max(1, Math.abs(expectedNodePrice)) * 1e-9;
+    if (Math.abs(expectedNodePrice - monthlyNodePrice) > tolerance) {
+      throw new RangeError('单槽位月成本与单节点月成本不一致');
+    }
+    return { monthlySlotPrice, monthlyNodePrice };
+  }
+  if (hasSlotPrice) {
+    return {
+      monthlySlotPrice,
+      monthlyNodePrice: monthlySlotPrice * slotsPerNode,
+    };
+  }
+  return {
+    monthlySlotPrice: monthlyNodePrice / slotsPerNode,
+    monthlyNodePrice,
+  };
+}
+
 export function calculatePackagedCapacityCost({
   capacity,
   slotsPerNode,
@@ -457,25 +496,26 @@ export function calculatePackagedCapacityCost({
     requiredCapacity: capacity,
     slotsPerNode,
   });
-  const hasSlotPrice =
-    Number.isFinite(monthlySlotPrice) && monthlySlotPrice >= 0;
-  const hasNodePrice =
-    Number.isFinite(monthlyNodePrice) &&
-    monthlyNodePrice >= 0;
-  const monthlySlotCost = hasSlotPrice
-    ? packaging.allocatedCapacity * monthlySlotPrice
-    : null;
-  const monthlyNodeCost = hasNodePrice
-    ? packaging.nodeCount * monthlyNodePrice
-    : null;
+  const pricing = resolveLinkedNodePricing({
+    slotsPerNode,
+    monthlySlotPrice,
+    monthlyNodePrice,
+  });
+  const monthlyRequiredSlotCost = pricing.monthlySlotPrice === null
+    ? null
+    : capacity * pricing.monthlySlotPrice;
+  const monthlyNodeCost = pricing.monthlyNodePrice === null
+    ? null
+    : packaging.nodeCount * pricing.monthlyNodePrice;
   const hasVolume = Number.isFinite(dailyTaskVolume) && dailyTaskVolume > 0;
   const costPerTask = (cost) =>
     cost !== null && hasVolume ? cost / (dailyTaskVolume * 30) : null;
   return {
     ...packaging,
-    monthlySlotCost,
+    ...pricing,
+    monthlyRequiredSlotCost,
     monthlyNodeCost,
-    slotCostPerTask: costPerTask(monthlySlotCost),
+    requiredSlotCostPerTask: costPerTask(monthlyRequiredSlotCost),
     nodeCostPerTask: costPerTask(monthlyNodeCost),
   };
 }
